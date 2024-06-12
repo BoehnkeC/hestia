@@ -1,3 +1,6 @@
+import uuid
+
+
 class Connection:
     def __init__(self):
         self.partner = None
@@ -9,6 +12,7 @@ class Connection:
 
 class Person:
     def __init__(self, first_name=None, middle_name=None, last_name=None):
+        self.id = uuid.uuid1()
         self.gender = None
         self.title = None
         self.first_name = first_name
@@ -20,12 +24,12 @@ class Person:
         self.date_of_death = None
         self.date_of_marriage = None
         self.date_of_divorce = None
-        self.connection = Connection()
+        self.connection = Connection()  # connect to another person
 
-    def living(self, date_of_birth=None, date_of_death=None):
+    def living_dates(self, date_of_birth=None, date_of_death=None):
         self.date_of_birth = date_of_birth
         self.date_of_death = date_of_death
 
-    def marriage(self, date_of_marriage=None, date_of_divorce=None):
+    def marriage_dates(self, date_of_marriage=None, date_of_divorce=None):
         self.date_of_marriage = date_of_marriage
         self.date_of_divorce = date_of_divorce
