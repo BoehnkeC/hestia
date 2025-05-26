@@ -12,6 +12,7 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.widget import Widget
 
 from hera.database import DB
+from hera.random_data import random_celebrity
 
 
 class Calliope(TextInput):
@@ -28,7 +29,8 @@ class Calliope(TextInput):
 
 
 class Escutcheon(Widget):
-    """Widget to represent a person on the canvas."""
+    """Widget to represent a person on the canvas.
+    An Escutcheon is a shield that forms the main or focal element in a coat of arms."""
 
     def __init__(self, name, dob, position, **kwargs):
         super().__init__(**kwargs)
@@ -107,9 +109,20 @@ class PersonMask:
         self.content.add_widget(test_button, index=0)  # insert Test button at the top left (row 0, col 0)
 
     def fill_test_data(self, instance):
-        self.first_name_input.text = "Ada"
-        self.last_name_input.text = "Lovelace"
-        self.dob_input.text = "1815-12-10"
+        # get all people currently in the DB
+        self.hera_app.db.cursor.execute("SELECT first_name, last_name FROM Person")
+        existing = self.hera_app.db.cursor.fetchall()
+        existing = set(" ".join(i) for i in existing)
+
+        name, dob = random_celebrity(existing)
+
+        if " " in name:
+            first, last = name.split(" ", 1)
+        else:
+            first, last = name, ""
+        self.first_name_input.text = first
+        self.last_name_input.text = last
+        self.dob_input.text = dob
 
 
 class Hera(App):
