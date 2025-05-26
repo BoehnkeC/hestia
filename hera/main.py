@@ -27,12 +27,12 @@ class Calliope(TextInput):
         return super().keyboard_on_key_down(window, keycode, text, modifiers)
 
 
-class PersonWidget(Widget):
+class Escutcheon(Widget):
     """Widget to represent a person on the canvas."""
 
     def __init__(self, name, dob, position, **kwargs):
         super().__init__(**kwargs)
-        label_text = f"{name}\nDOB: {dob}"
+        label_text = f"{name}\n* {dob}"
         self.label = Label(
             text=label_text,
             size_hint=(None, None),
@@ -65,6 +65,53 @@ class PersonWidget(Widget):
         self.add_widget(self.label)
 
 
+class PersonMask:
+    def __init__(self, hera_app):
+        self.hera_app = hera_app  # reference to the main app to call their methods
+        self.content = GridLayout(cols=2, spacing=10, padding=10)  # layout for the popup
+        self.popup = Popup(title="Add a new person", content=self.content, size_hint=(0.75, 0.5), auto_dismiss=True)
+
+    def add_fields(self):
+        # input fields for the person's details
+        self.content.add_widget(Label(text="First Name:"))
+        self.first_name_input = Calliope(multiline=False)
+        self.content.add_widget(self.first_name_input)
+
+        self.content.add_widget(Label(text="Last Name:"))
+        self.last_name_input = Calliope(multiline=False)
+        self.content.add_widget(self.last_name_input)
+
+        self.content.add_widget(Label(text="Date of Birth:"))
+        self.dob_input = Calliope(multiline=False)
+        self.content.add_widget(self.dob_input)
+
+        self.tab_key_navigation()
+
+    def tab_key_navigation(self):
+        # tab key navigation
+        self.first_name_input.next_input = self.last_name_input
+        self.last_name_input.next_input = self.dob_input
+
+    def add_buttons(self):
+        save_button = Button(text="Save", size_hint=(0.5, 0.5))
+        save_button.bind(
+            on_press=lambda x: self.hera_app.save_person(
+                self.first_name_input.text, self.last_name_input.text, self.dob_input.text, self.popup
+            )
+        )
+
+        test_button = Button(text="Test", size_hint=(0.5, 0.5))
+        test_button.bind(on_press=self.fill_test_data)
+
+        self.content.add_widget(save_button)
+        self.content.add_widget(test_button, index=0)  # insert Test button at the top left (row 0, col 0)
+
+    def fill_test_data(self, instance):
+        self.first_name_input.text = "Ada"
+        self.last_name_input.text = "Lovelace"
+        self.dob_input.text = "1815-12-10"
+
+
 class Hera(App):
     def build(self):
         self.db = DB()
@@ -90,38 +137,10 @@ class Hera(App):
         layout.add_widget(add_person_button)
 
     def open_add_person_popup(self, instance):
-        content = GridLayout(cols=2, spacing=10, padding=10)  # layout for the popup
-
-        # Input fields for the person's details
-        content.add_widget(Label(text="First Name:"))
-        first_name_input = Calliope(multiline=False)
-        content.add_widget(first_name_input)
-
-        content.add_widget(Label(text="Last Name:"))
-        last_name_input = Calliope(multiline=False)
-        content.add_widget(last_name_input)
-
-        content.add_widget(Label(text="Date of Birth:"))
-        dob_input = Calliope(multiline=False)
-        content.add_widget(dob_input)
-
-        # tab key navigation
-        first_name_input.next_input = last_name_input
-        last_name_input.next_input = dob_input
-
-        # button to save the entry
-        save_button = Button(text="Save", size_hint=(0.5, 0.5))
-
-        # create the popup window
-        popup = Popup(title="Add a new person", content=content, size_hint=(0.75, 0.5), auto_dismiss=True)
-
-        save_button.bind(
-            on_press=lambda x: self.save_person(first_name_input.text, last_name_input.text, dob_input.text, popup)
-        )
-
-        content.add_widget(save_button)
-
-        popup.open()
+        person_mask = PersonMask(self)
+        person_mask.add_fields()  # add input fields to the popup
+        person_mask.add_buttons()  # add buttons to the popup
+        person_mask.popup.open()
 
     def save_person(self, first_name, last_name, date_of_birth, popup):
         person_id = str(uuid.uuid4())
@@ -149,7 +168,7 @@ class Hera(App):
             name = f"{person[0]} {person[1]}"
             dob = person[2]
             position = (100, y * self.canvas.height)
-            self.canvas.add_widget(PersonWidget(name=name, dob=dob, position=position))
+            self.canvas.add_widget(Escutcheon(name=name, dob=dob, position=position))
             y -= 0.1  # decrement y position for each rectangle
 
     def refresh_canvas(self):

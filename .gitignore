@@ -27,3 +27,6 @@ ipython_config.py
 
 # VS Code
 .vscode/
+
+# Data
+*.db
