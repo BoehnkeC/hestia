@@ -19,4 +19,14 @@ class DB:
             date_of_birth TEXT
         )
         """)
+        self.cursor.execute("""
+        CREATE TABLE IF NOT EXISTS PersonRelation (
+            id TEXT PRIMARY KEY,
+            person_id TEXT,
+            related_person_id TEXT,
+            relation_type TEXT,
+            FOREIGN KEY(person_id) REFERENCES Person(id),
+            FOREIGN KEY(related_person_id) REFERENCES Person(id)
+        )
+    """)
         self.conn.commit()

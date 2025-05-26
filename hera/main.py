@@ -32,8 +32,10 @@ class Escutcheon(Widget):
     """Widget to represent a person on the canvas.
     An Escutcheon is a shield that forms the main or focal element in a coat of arms."""
 
-    def __init__(self, name, dob, position, **kwargs):
+    def __init__(self, name, dob, position, person_id=None, hera_app=None, **kwargs):
         super().__init__(**kwargs)
+        self.person_id = person_id
+        self.hera_app = hera_app
         label_text = f"{name}\n* {dob}"
         self.label = Label(
             text=label_text,
@@ -66,12 +68,26 @@ class Escutcheon(Widget):
 
         self.add_widget(self.label)
 
+    def on_touch_down(self, touch):
+        """Handle touch events to edit the person when the rectangle is clicked."""
+        if self.collide_point(*touch.pos):
+            if self.hera_app and self.person_id:
+                self.hera_app.edit_person(self.person_id)
+            return True
+        return super().on_touch_down(touch)
+
 
 class PersonMask:
-    def __init__(self, hera_app):
+    def __init__(self, hera_app, person=None):
         self.hera_app = hera_app  # reference to the main app to call their methods
+        self.person = person  # person data as dict or None
         self.content = GridLayout(cols=2, spacing=10, padding=10)  # layout for the popup
-        self.popup = Popup(title="Add a new person", content=self.content, size_hint=(0.75, 0.5), auto_dismiss=True)
+        self.popup = Popup(
+            title="Edit person" if person else "Add a new person",
+            content=self.content,
+            size_hint=(0.75, 0.5),
+            auto_dismiss=True,
+        )
 
     def add_fields(self):
         # input fields for the person's details
@@ -87,6 +103,11 @@ class PersonMask:
         self.dob_input = Calliope(multiline=False)
         self.content.add_widget(self.dob_input)
 
+        if self.person:
+            self.first_name_input.text = self.person["first_name"]
+            self.last_name_input.text = self.person["last_name"]
+            self.dob_input.text = self.person["date_of_birth"]
+
         self.tab_key_navigation()
 
     def tab_key_navigation(self):
@@ -95,12 +116,24 @@ class PersonMask:
         self.last_name_input.next_input = self.dob_input
 
     def add_buttons(self):
-        save_button = Button(text="Save", size_hint=(0.5, 0.5))
-        save_button.bind(
-            on_press=lambda x: self.hera_app.save_person(
-                self.first_name_input.text, self.last_name_input.text, self.dob_input.text, self.popup
+        if self.person:
+            save_button = Button(text="Update", size_hint=(0.5, 0.5))
+            save_button.bind(
+                on_press=lambda x: self.hera_app.update_person(
+                    self.person["id"],
+                    self.first_name_input.text,
+                    self.last_name_input.text,
+                    self.dob_input.text,
+                    self.popup,
+                )
             )
-        )
+        else:
+            save_button = Button(text="Save", size_hint=(0.5, 0.5))
+            save_button.bind(
+                on_press=lambda x: self.hera_app.save_person(
+                    self.first_name_input.text, self.last_name_input.text, self.dob_input.text, self.popup
+                )
+            )
 
         test_button = Button(text="Test", size_hint=(0.5, 0.5))
         test_button.bind(on_press=self.fill_test_data)
@@ -170,7 +203,7 @@ class Hera(App):
 
     def load_people_from_db(self):
         # fetch people data from the database
-        self.db.cursor.execute("SELECT first_name, last_name, date_of_birth FROM Person")
+        self.db.cursor.execute("SELECT id, first_name, last_name, date_of_birth FROM Person")
         people = self.db.cursor.fetchall()
 
         # draw each person as a rectangle on the canvas
@@ -178,11 +211,50 @@ class Hera(App):
         self.canvas.clear_widgets()
 
         for person in people:
-            name = f"{person[0]} {person[1]}"
-            dob = person[2]
+            person_id, first_name, last_name, dob = person
+            name = f"{first_name} {last_name}"
             position = (100, y * self.canvas.height)
-            self.canvas.add_widget(Escutcheon(name=name, dob=dob, position=position))
+            self.canvas.add_widget(
+                Escutcheon(
+                    name=name,
+                    dob=dob,
+                    position=position,
+                    person_id=person_id,
+                    hera_app=self,
+                )
+            )
             y -= 0.1  # decrement y position for each rectangle
+
+    def edit_person(self, person_id):
+        # fetch person data by id
+        self.db.cursor.execute(
+            "SELECT id, first_name, last_name, date_of_birth FROM Person WHERE id = ?", (person_id,)
+        )
+        row = self.db.cursor.fetchone()
+        if row:
+            person = {
+                "id": row[0],
+                "first_name": row[1],
+                "last_name": row[2],
+                "date_of_birth": row[3],
+            }
+            person_mask = PersonMask(self, person=person)
+            person_mask.add_fields()
+            person_mask.add_buttons()
+            person_mask.popup.open()
+
+    def update_person(self, person_id, first_name, last_name, date_of_birth, popup):
+        self.db.cursor.execute(
+            """
+            UPDATE Person
+            SET first_name = ?, last_name = ?, date_of_birth = ?
+            WHERE id = ?
+            """,
+            (first_name, last_name, date_of_birth, person_id),
+        )
+        self.db.conn.commit()
+        popup.dismiss()
+        self.refresh_canvas()
 
     def refresh_canvas(self):
         self.load_people_from_db()  # reload the canvas with updated people data
