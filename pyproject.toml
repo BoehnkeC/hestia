@@ -1,0 +1,60 @@
+[tool.ruff]
+lint.select = [
+    "E", # pycodestyle
+    "W", # pycodestyle
+    "F", # pyflakes
+    "A", # builtins
+    "B", # bugbear
+    "I", # isort
+    "NPY", # NumPy
+    "UP", # pyupgrade
+    "PD", # pandas-vet
+    "DTZ", # flake8-datetimez
+    "C90", # mccabe
+    "TCH", # flake8-type-checking
+    "TID", # flake8-tidy-imports
+    "SIM", # flake8-simplify
+    "RUF", # ruff specifics
+    "PTH", # use pathlib
+    "PERF", # performance
+]
+
+lint.fixable = [ "I", "W" ] # only auto-fix isort and pycodestyle(W) rules
+lint.ignore = [
+    "E501", # Do not enforce line length; black does this for code and we do not care about comments / docs
+    "PD003", # Do not enforce usage of .isna() over .isnull() because it does not exist in xarray
+    "PD011", # Do not enforce usage of .to_numpy() over .values because of pygrib (we should still use to_numpy() where possible)
+]
+
+lint.mccabe.max-complexity = 10
+
+line-length = 119
+
+# Assume Python 3.10.
+target-version = "py310"
+
+[tool.ruff.lint.per-file-ignores]
+# Do not inforce usage and import order rules in init files
+"__init__.py" = [ "F403" ]
+
+[tool.pytest.ini_options]
+testpaths = [ "tests" ]
+env = [ "DS_LOCAL=true" ]
+filterwarnings = [ "ignore::RuntimeWarning" ]
+
+[project]
+name = "hera"
+version = "0.0.1"
+description = "Hera: family tree with GUI support"
+authors = [
+    { name = "Christian Krullikowski", email = "christian@home-boehnke.de" },
+]
+license = "MIT"
+readme = "README.md"
+dependencies = [ "kivy>=2.1.0" ]
+
+requires-python = ">=3.12"
+
+[build-system]
+requires = [ "setuptools>=42", "wheel" ]
+build-backend = "setuptools.build_meta"

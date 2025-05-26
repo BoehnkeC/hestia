@@ -1,0 +1,4 @@
+- create a person, give name, dates etc.
+- create a second person
+- state person a is married to person b
+- this creates a node connection, already with the node type as the connection was openend through the marriage
