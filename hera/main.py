@@ -14,11 +14,9 @@ class Hera(App):
         self.db = DB()
 
         self.main_layout = BoxLayout(orientation="vertical")
-        toolbar = BoxLayout(orientation="horizontal", size_hint=(1, 0.1))
-
-        self.add_buttons(toolbar)
-
-        self.main_layout.add_widget(toolbar)  # add toolbar to the main layout
+        self.toolbar = BoxLayout(orientation="horizontal", size_hint=(1, 0.1))
+        self.add_buttons(self.toolbar)
+        self.main_layout.add_widget(self.toolbar)  # add toolbar to the main layout
 
         # layout for displaying people
         self.canvas = FloatLayout()
@@ -26,7 +24,15 @@ class Hera(App):
 
         self.load_people_from_db()  # initial load of people from the database
 
+        # bind to size changes so we always have up-to-date sizes
+        self.canvas.bind(size=self.on_layout_size)
+        self.toolbar.bind(size=self.on_layout_size)
+
         return self.main_layout
+
+    def on_layout_size(self, *args):
+        # dummy handler to force recalculation if needed
+        pass
 
     def add_buttons(self, layout):
         add_person_button = Button(text="Add person")
@@ -37,13 +43,30 @@ class Hera(App):
         person = Person(self)
         person.open_popup(on_save=self.save_person)
 
-    def save_person(self, person):
-        self.db.cursor.execute(  # insert the new person into the database
-            """
-            INSERT INTO Person (id, first_name, last_name, date_of_birth)
-            VALUES (?, ?, ?, ?)
-        """,
-            (person.id, person.first_name, person.last_name, person.date_of_birth),
+    def save_person(self, person, escutcheon):
+        # gather all current positions
+        self.db.cursor.execute("SELECT pos_x, pos_y FROM Person")
+        existing_positions = [
+            (row[0], row[1]) for row in self.db.cursor.fetchall() if row[0] is not None and row[1] is not None
+        ]
+        position = Escutcheon.find_free_position(
+            existing_positions,
+            rect_size=(150, 60),
+            canvas_size=self.canvas.size,
+            margin=20,
+            toolbar_height=self.toolbar.height,
+        )
+
+        self.db.cursor.execute(
+            "INSERT OR REPLACE INTO Person (id, first_name, last_name, date_of_birth, pos_x, pos_y) VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                person.id,
+                person.first_name,
+                person.last_name,
+                person.date_of_birth,
+                position[0],
+                position[1],
+            ),
         )
         self.db.conn.commit()
         person.popup.dismiss()  # close the popup window
@@ -51,27 +74,20 @@ class Hera(App):
 
     def load_people_from_db(self):
         # fetch people data from the database
-        self.db.cursor.execute("SELECT id, first_name, last_name, date_of_birth FROM Person")
-        people = self.db.cursor.fetchall()
-
-        # draw each person as a rectangle on the canvas
-        y = 0.8  # starting y position for drawing rectangles
+        self.db.cursor.execute("SELECT id, first_name, last_name, date_of_birth, pos_x, pos_y FROM Person")
         self.canvas.clear_widgets()
 
-        for p in people:
-            person_id, first_name, last_name, dob = p
-            name = f"{first_name} {last_name}"
-            position = (100, y * self.canvas.height)
-            self.canvas.add_widget(
-                Escutcheon(
-                    name=name,
-                    dob=dob,
-                    position=position,
-                    person_id=person_id,
-                    hera_app=self,
-                )
+        for row in self.db.cursor.fetchall():
+            person_id, first, last, dob, pos_x, pos_y = row
+            position = (pos_x, pos_y)
+            escutcheon = Escutcheon(
+                name=f"{first} {last}",
+                dob=dob,
+                position=position,
+                person_id=person_id,
+                hera_app=self,
             )
-            y -= 0.1  # decrement y position for each rectangle
+            self.canvas.add_widget(escutcheon)
 
     def edit_person(self, person_id):
         # fetch person data by id

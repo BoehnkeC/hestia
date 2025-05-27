@@ -1,3 +1,4 @@
+import random
 import uuid
 
 from kivy.graphics import Color, Line, Rectangle
@@ -19,6 +20,7 @@ class Escutcheon(Widget):
         super().__init__(**kwargs)
         self.person_id = person_id
         self.hera_app = hera_app
+        self.position = position
         label_text = f"{name}\n* {dob}"
         self.label = Label(
             text=label_text,
@@ -41,6 +43,9 @@ class Escutcheon(Widget):
         # update label size and position
         self.label.size = (rect_width, rect_height)
         self.label.text_size = (rect_width, rect_height)
+        # Ensure position is valid (no None values)
+        if position is None or None in position:
+            position = (20, 20)
         self.label.pos = position
 
         with self.canvas:
@@ -51,11 +56,50 @@ class Escutcheon(Widget):
 
         self.add_widget(self.label)
 
+    @property
+    def pos_tuple(self):
+        return self.position
+
+    @staticmethod
+    def overlaps(x1, y1, x2, y2, rect_w, rect_h, margin):
+        """Returns True if rectangles at (x1, y1) and (x2, y2) overlap."""
+        return not (
+            x1 + rect_w + margin <= x2
+            or x2 + rect_w + margin <= x1
+            or y1 + rect_h + margin <= y2
+            or y2 + rect_h + margin <= y1
+        )
+
+    @staticmethod
+    def find_free_position(
+        existing_positions,
+        rect_size=(150, 60),
+        canvas_size=(1000, 800),
+        margin=20,
+        toolbar_height=80,  # adjust as needed
+    ):
+        """Find a non-overlapping position for a new rectangle using bounding box collision detection."""
+        max_attempts = 2000
+        rect_w, rect_h = rect_size
+
+        min_y = int(toolbar_height) + margin
+        max_y = int(canvas_size[1]) - rect_h - margin
+        min_x = margin
+        max_x = int(canvas_size[0]) - rect_w - margin
+
+        for _ in range(max_attempts):
+            x = random.randint(min_x, max_x)
+            y = random.randint(min_y, max_y)
+            if all(not Escutcheon.overlaps(x, y, px, py, rect_w, rect_h, margin) for px, py in existing_positions):
+                return (x, y)
+        # fallback: pick a random valid position
+        fallback_x = random.randint(min_x, max_x)
+        fallback_y = random.randint(min_y, max_y)
+        return (fallback_x, fallback_y)
+
     def on_touch_down(self, touch):
-        """Handle touch events to edit the person when the rectangle is clicked."""
         if self.collide_point(*touch.pos):
-            if self.hera_app and self.person_id:
-                self.hera_app.edit_person(self.person_id)
+            self.hera_app.edit_person(self.person_id)
             return True
         return super().on_touch_down(touch)
 
@@ -77,18 +121,23 @@ class Person:
         self.last_name: str | None = getattr(person, "last_name", None)
         self.date_of_birth: str | None = getattr(person, "date_of_birth", None)
 
-    def save_callback(self, on_save):
+    def save_person_data(self):
         first = self.first_name_input.text.strip()
         last = self.last_name_input.text.strip()
         dob = self.dob_input.text.strip()
+
+        # check for data, return if no data
         if not first or not last or not dob:
-            # Optionally show error
             return
-        self.id = self.id or uuid.uuid4()
+
+        self.id = self.id or str(uuid.uuid4())
         self.first_name = first
         self.last_name = last
         self.date_of_birth = dob
-        on_save(self)
+
+    def save_callback(self, on_save):
+        self.save_person_data()
+        on_save(self, None)  # pass None for escutcheon
 
     def open_popup(self, on_save):
         """Build popup with fields and buttons."""
@@ -161,5 +210,3 @@ class Person:
         self.first_name_input.text = first
         self.last_name_input.text = last
         self.dob_input.text = dob
-
-        self.add_person()  # update the person data with the test values
