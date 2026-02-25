@@ -17,7 +17,20 @@ class DB:
             id TEXT PRIMARY KEY,
             first_name TEXT,
             last_name TEXT,
-            date_of_birth TEXT
+            date_of_birth TEXT,
+            x FLOAT DEFAULT 0,
+            y FLOAT DEFAULT 0,
+            width FLOAT DEFAULT 0,
+            height FLOAT DEFAULT 0
+        )
+        """)
+        self.cursor.execute("""
+        CREATE TABLE IF NOT EXISTS Escutcheons (
+            id TEXT PRIMARY KEY,
+            x FLOAT DEFAULT 0,
+            y FLOAT DEFAULT 0,
+            width FLOAT DEFAULT 0,
+            height FLOAT DEFAULT 0
         )
         """)
         self.cursor.execute("""
@@ -41,3 +54,8 @@ class DB:
         if "pos_y" not in columns:
             self.cursor.execute("ALTER TABLE Person ADD COLUMN pos_y INTEGER")
         self.conn.commit()
+
+    def get_escutcheons(self):
+        """Fetch all escutcheons from the database."""
+        self.cursor.execute("SELECT * FROM Escutcheons")
+        return self.cursor.fetchall()

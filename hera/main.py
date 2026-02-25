@@ -1,4 +1,4 @@
-from collections import namedtuple
+from statistics import mean
 
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
@@ -12,21 +12,22 @@ from hera.person import Escutcheon, Person
 class Hera(App):
     def build(self):
         self.db = DB()
+        self.escutcheons = {}  # track all escutcheons
 
         self.main_layout = BoxLayout(orientation="vertical")
         self.toolbar = BoxLayout(orientation="horizontal", size_hint=(1, 0.1))
-        self.add_buttons(self.toolbar)
+        self.add_buttons()
         self.main_layout.add_widget(self.toolbar)  # add toolbar to the main layout
 
         # layout for displaying people
         self.canvas = FloatLayout()
         self.main_layout.add_widget(self.canvas)
 
-        self.load_people_from_db()  # initial load of people from the database
-
         # bind to size changes so we always have up-to-date sizes
         self.canvas.bind(size=self.on_layout_size)
         self.toolbar.bind(size=self.on_layout_size)
+
+        self.load_people_from_db()  # initial load of people from the database
 
         return self.main_layout
 
@@ -34,93 +35,118 @@ class Hera(App):
         # dummy handler to force recalculation if needed
         pass
 
-    def add_buttons(self, layout):
+    def add_buttons(self):
+        """Add buttons to the toolbar."""
         add_person_button = Button(text="Add person")
+        self.toolbar.add_widget(add_person_button)
         add_person_button.bind(on_press=self.open_add_person_popup)
-        layout.add_widget(add_person_button)
 
     def open_add_person_popup(self, instance):
+        """Open the popup to add a new person or edit an existing one."""
         person = Person(self)
-        person.open_popup(on_save=self.save_person)
+        person.open_popup(on_save=lambda p: self.save_person(p, edit=False))  # save callback to popup
 
-    def save_person(self, person, escutcheon):
-        # gather all current positions
-        self.db.cursor.execute("SELECT pos_x, pos_y FROM Person")
-        existing_positions = [
-            (row[0], row[1]) for row in self.db.cursor.fetchall() if row[0] is not None and row[1] is not None
-        ]
-        position = Escutcheon.find_free_position(
-            existing_positions,
-            rect_size=(150, 60),
-            canvas_size=self.canvas.size,
-            margin=20,
-            toolbar_height=self.toolbar.height,
-        )
+    def edit_person(self, person):
+        person.open_popup(on_save=lambda p: self.save_person(p, edit=True))
 
+    def save_person(self, person, edit=False):
+        """Callback to save the person data."""
+        if edit:
+            escutcheon = self.escutcheons.get(person.id)
+            self.canvas.remove_widget(escutcheon)
+            self.person_to_canvas(person, escutcheon)
+
+        else:
+            self.person_to_canvas(person)
+
+        self.save_person_to_db(person)
+        self.arrange_escutcheons()
+        self.save_escutcheons_to_db()
+
+    def save_person_to_db(self, person):
+        """Save the person to the database."""
         self.db.cursor.execute(
-            "INSERT OR REPLACE INTO Person (id, first_name, last_name, date_of_birth, pos_x, pos_y) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO Person (id, first_name, last_name, date_of_birth) VALUES (?, ?, ?, ?)",
             (
                 person.id,
                 person.first_name,
                 person.last_name,
                 person.date_of_birth,
-                position[0],
-                position[1],
             ),
         )
         self.db.conn.commit()
-        person.popup.dismiss()  # close the popup window
-        self.refresh_canvas()  # refresh the canvas to add the new person
+
+    def person_to_canvas(self, person, escutcheon=None):
+        """Add the person to the canvas."""
+        if escutcheon is None:
+            escutcheon = Escutcheon(
+                self,
+                person,
+            )
+
+        escutcheon.draw()
+        self.canvas.add_widget(escutcheon)
+        self.escutcheons[person.id] = escutcheon
+        # Optionally, you can also store the escutcheon in a list or dictionary for later reference
+        # self.escutcheons.append(escutcheon)
+
+    def arrange_escutcheons(self):
+        esc_width = mean([esc.rectangle.size[0] for esc in self.escutcheons.values()])
+        esc_height = mean([esc.rectangle.size[1] for esc in self.escutcheons.values()])
+        spacing = (
+            (self.canvas.width - len(self.escutcheons) * esc_width) / (len(self.escutcheons) + 1)
+            if len(self.escutcheons) > 0
+            else 0
+        )
+
+        for i, esc in enumerate(self.escutcheons.values()):
+            x = spacing + i * (esc_width + spacing)
+            y = (self.canvas.height - esc_height) / 2  # Center vertically
+            esc.rectangle.pos = (x, y)
+            esc.label.pos = (  # position the label inside the rectangle (centered)
+                esc.rectangle.pos[0] + esc.padding_x,
+                esc.rectangle.pos[1] + esc.padding_y,
+            )
+
+    def save_escutcheons_to_db(self):
+        """Save all escutcheons to the database."""
+        for esc in self.escutcheons.values():
+            self.db.cursor.execute(
+                "INSERT OR REPLACE INTO Escutcheons (id, x, y, width, height) VALUES (?, ?, ?, ?, ?)",
+                (
+                    esc.person.id,
+                    esc.rectangle.pos[0],
+                    esc.rectangle.pos[1],
+                    esc.rectangle.size[0],
+                    esc.rectangle.size[1],
+                ),
+            )
+        self.db.conn.commit()
 
     def load_people_from_db(self):
-        # fetch people data from the database
-        self.db.cursor.execute("SELECT id, first_name, last_name, date_of_birth, pos_x, pos_y FROM Person")
-        self.canvas.clear_widgets()
+        """Load all people from the database and display them."""
+        self.db.cursor.execute("SELECT id, first_name, last_name, date_of_birth FROM Person")
+        persons = self.db.cursor.fetchall()
+        escutcheons = self.db.get_escutcheons()
 
-        for row in self.db.cursor.fetchall():
-            person_id, first, last, dob, pos_x, pos_y = row
-            position = (pos_x, pos_y)
+        if len(persons) == 0 and len(escutcheons) == 0:
+            return
+
+        for p, esc in zip(persons, escutcheons, strict=True):
+            person_id, first, last, dob = p
+            person = Person(self)
+            person.id = person_id
+            person.first_name = first
+            person.last_name = last
+            person.date_of_birth = dob
+
+            _, x, y, _, _ = esc
             escutcheon = Escutcheon(
-                name=f"{first} {last}",
-                dob=dob,
-                position=position,
-                person_id=person_id,
-                hera_app=self,
+                self,
+                person,
+                position=(x, y),
             )
-            self.canvas.add_widget(escutcheon)
-
-    def edit_person(self, person_id):
-        # fetch person data by id
-        self.db.cursor.execute(
-            "SELECT id, first_name, last_name, date_of_birth FROM Person WHERE id = ?", (person_id,)
-        )
-        row = self.db.cursor.fetchone()
-        if row:
-            PersonTuple = namedtuple("PersonTuple", ["id", "first_name", "last_name", "date_of_birth"])
-            person_obj = PersonTuple(
-                id=row[0],
-                first_name=row[1],
-                last_name=row[2],
-                date_of_birth=row[3],
-            )
-            person = Person(self, person=person_obj)
-            person.open_popup(on_save=self.update_person)
-
-    def update_person(self, person):
-        self.db.cursor.execute(
-            """
-            UPDATE Person
-            SET first_name = ?, last_name = ?, date_of_birth = ?
-            WHERE id = ?
-            """,
-            (person.first_name, person.last_name, person.date_of_birth, person.id),
-        )
-        self.db.conn.commit()
-        person.popup.dismiss()
-        self.refresh_canvas()
-
-    def refresh_canvas(self):
-        self.load_people_from_db()  # reload the canvas with updated people data
+            self.person_to_canvas(person, escutcheon)
 
 
 if __name__ == "__main__":
